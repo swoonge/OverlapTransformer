@@ -213,7 +213,7 @@ def calculate_metrics(matching_results, top_k=5):
     }
 
 def __main__(sequence):
-    # load scan paths and poses
+     # load scan paths and poses
     args = parser.parse_args()
     matrics_total = {}
     for seq in sequence:
@@ -337,7 +337,7 @@ def __main__(sequence):
 
 if __name__ == '__main__':
     # use sequences 03–10 for training, sequence 02 for validation, and sequence 00 for evaluation.
-    # sequence = ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
-    sequence = ["00"]
+    sequence = ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
+    # sequence = ["00"]
     
     __main__(sequence)
