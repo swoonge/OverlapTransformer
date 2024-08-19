@@ -1,0 +1,15 @@
+# Temp files
+__pycache__
+*.swp
+*.swo
+*.orig
+.idea
+*.pyc
+*.ply
+*.pth
+*.bin
+logs
+
+checkpoints/*
+*.tar
+train/runs/*

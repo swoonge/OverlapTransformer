@@ -239,8 +239,7 @@ def load_vertex(scan_path):
 def load_files(folder):
   """ Load all files in a folder and sort.
   """
-  file_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(
-    os.path.expanduser(folder)) for f in fn]
+  file_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(folder)) for f in fn]
   file_paths.sort()
   return file_paths
 

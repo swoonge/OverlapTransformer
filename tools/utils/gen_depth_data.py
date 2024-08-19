@@ -7,6 +7,7 @@ import os
 from utils import load_files
 import numpy as np
 from utils import range_projection
+from tqdm import trange
 
 import cv2
 try:
@@ -27,7 +28,7 @@ def gen_depth_data(scan_folder, dst_folder, normalize=False):
       The input raw data are in the shape of (Num_points, 3).
   """
     # specify the goal folder
-    dst_folder = os.path.join(dst_folder, 'depth')
+    dst_folder = os.path.join(dst_folder, 'depth_map')
     try:
         os.stat(dst_folder)
         print('generating depth data in: ', dst_folder)
@@ -36,13 +37,13 @@ def gen_depth_data(scan_folder, dst_folder, normalize=False):
         os.mkdir(dst_folder)
 
     # load LiDAR scan files
-    scan_paths = load_files(scan_folder)
+    scan_paths = load_files(scan_folder+'/velodyne')
 
     depths = []
     axis_x, axis_y, axis_z = [1,0,0], [0,1,0], [0, 0, 1]
 
     # iterate over all scan files
-    for idx in range(len(scan_paths)):
+    for idx in trange(len(scan_paths)):
         # load a point cloud
         current_vertex = np.fromfile(scan_paths[idx], dtype=np.float32)
         current_vertex = current_vertex.reshape((-1, 4))
@@ -59,13 +60,17 @@ def gen_depth_data(scan_folder, dst_folder, normalize=False):
         # np.save(dst_path, proj_range)
         filename = dst_path + ".png"
         cv2.imwrite(filename, proj_range)
-        print('finished generating depth data at: ', dst_path)
+        # print('finished generating depth data at: ', dst_path)
 
     return depths
 
 
 if __name__ == '__main__':
-    scan_folder = 'path_to_source_bin'
-    dst_folder = 'path_to_saved_png'
+    main_folder = '/media/vision/Data0/DataSets/kitti/dataset/sequences'
+    sequence = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']
 
-    depth_data = gen_depth_data(scan_folder, dst_folder)
+    for seq in sequence:
+        scan_folder = os.path.join(main_folder, seq)
+        dst_folder = os.path.join(main_folder, seq)
+        print(scan_folder, dst_folder)
+        depth_data = gen_depth_data(scan_folder, dst_folder)

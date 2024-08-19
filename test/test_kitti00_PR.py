@@ -18,7 +18,6 @@ import yaml
 from sklearn import metrics
 
 
-
 def cal_pr_curve(prediction_file_name, ground_truth_file_name):
     precisions = []
     recalls = []

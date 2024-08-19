@@ -67,7 +67,7 @@ class featureExtracter(nn.Module):
             MHSA
             num_layers=1 is suggested in our work.
         """
-        encoder_layer = nn.TransformerEncoderLayer(d_model=256, nhead=4, dim_feedforward=1024, activation='relu', batch_first=False,dropout=0.)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=256, nhead=4, dim_feedforward=1024, activation='relu', batch_first=False, dropout=0.) # Transformer Encoder Layer 설정 True로 하면 빨라진다고 warning이 뜸
         self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=1)
         self.convLast1 = nn.Conv2d(128, 256, kernel_size=(1,1), stride=(1,1), bias=False)
         self.bnLast1 = norm_layer(256)

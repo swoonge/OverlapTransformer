@@ -168,7 +168,7 @@ class trainHandler():
                 # loss = PNV_loss.triplet_loss_inv(o1, o2, o3, MARGIN_1, lazy=False, use_min=True)
                 loss.backward()
                 self.optimizer.step()
-                print(str(used_num), loss)
+                print(str(used_num)+"/"+str(len(self.train_imgf1)), loss)
 
                 if torch.isnan(loss):
                     print("Something error ...")
