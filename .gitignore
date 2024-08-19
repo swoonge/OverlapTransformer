@@ -13,3 +13,7 @@ logs
 checkpoints/*
 *.tar
 train/runs/*
+sw_test/fn_case/*
+sw_test/fp_case/*
+sw_test/tp_case/*
+sw_test/processed_data/*
