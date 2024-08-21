@@ -16,7 +16,7 @@ import torch
 import numpy as np
 from tensorboardX import SummaryWriter
 from tools.read_all_sets import overlap_orientation_npz_file2string_string_nparray
-from modules.overlap_transformer import featureExtracter
+from modules.sp_overlap_transformer import FeatureExtractor
 from tools.read_samples import read_one_batch_pos_neg
 from tools.read_samples import read_one_need_from_seq
 np.set_printoptions(threshold=sys.maxsize)
@@ -42,7 +42,7 @@ class trainHandler():
         self.train_set = train_set
         self.training_seqs = training_seqs
 
-        self.amodel = featureExtracter(channels=self.channels, use_transformer=self.use_transformer)
+        self.amodel = FeatureExtractor(channels=self.channels, use_transformer=self.use_transformer)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.amodel.to(self.device)
         self.parameters  = self.amodel.parameters()

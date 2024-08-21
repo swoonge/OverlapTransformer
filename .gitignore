@@ -8,6 +8,7 @@ __pycache__
 *.ply
 *.pth
 *.bin
+*.zip
 logs
 
 checkpoints/*
@@ -17,3 +18,4 @@ sw_test/fn_case/*
 sw_test/fp_case/*
 sw_test/tp_case/*
 sw_test/preprocessed_data/*
+sw_test/all_case/*

@@ -61,9 +61,9 @@ def __main__():
 
     # load scan paths
     scan_paths = sorted(glob.glob(os.path.join(dataset_path, 'velodyne', '*.bin')))
-    # scans = []
-    # for scan_path in tqdm(scan_paths):
-    #     scans.append(load_vertex(scan_path))
+    scans = []
+    for scan_path in tqdm(scan_paths):
+        scans.append(load_vertex(scan_path))
 
     # load calibrations
     calib_file = os.path.join(dataset_path, 'calib.txt')
@@ -82,15 +82,15 @@ def __main__():
 
     for pose in poses:
         poses_new.append(T_velo_cam.dot(pose0_inv).dot(pose).dot(T_cam_velo))
-    plot_two_poses(poses, poses_new)
+    # plot_two_poses(poses, poses_new)
     poses = np.array(poses_new)
 
     # calculate range image
-    # range_images = []
-    # for i in range(len(scans)):
-    #     current_points = scans[i]
-    #     proj_range, _, _, _ = range_projection(current_points, fov_up=3, fov_down=-25.0, proj_H=64, proj_W=900, max_range=50)
-    #     range_images.append(proj_range)
+    range_images = []
+    for i in range(len(scans)):
+        current_points = scans[i]
+        proj_range, _, _, _ = range_projection(current_points, fov_up=3, fov_down=-25.0, proj_H=64, proj_W=900, max_range=50)
+        range_images.append(proj_range)
 
     # calculate overlap
     ground_truth_mapping, current_range, reference_range_list = com_overlap(scan_paths, poses, frame_idx=0)

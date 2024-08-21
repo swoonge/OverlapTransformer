@@ -12,13 +12,15 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import torch
 import yaml
 from com_overlap import com_overlap
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.metrics import roc_auc_score, precision_recall_curve
 from scipy.spatial.distance import pdist, squareform
+from tqdm import trange
+import time
+import matplotlib.gridspec as gridspec
 
 from modules.overlap_transformer import featureExtracter
 
@@ -31,110 +33,30 @@ test_weights = config["demo1_config"]["test_weights"]
 # set args for the script
 parser = argparse.ArgumentParser(description='Generate overlap and orientation combined mapping file')
 parser.add_argument('--dataset_path', type=str, default='/media/vision/Seagate/DataSets/kitti/dataset/sequences/', help='path to the scan data')
-parser.add_argument('--total_vis', type=bool, default=False, help='total_vis')
-parser.add_argument('--case_vis', type=bool, default=False, help='case_vis')
 
-def plot_total_matching(poses, matchings, vis=True):
-    # 전체 지도 생성 -> x, y 좌표 추출
-    x_map, y_map = zip(*[pose[:2, 3] for pose in poses])
+def plot_two_poses(poses, poses_new):
+    # poses와 poses_new에서 x, y, z 좌표 추출
+    x_old, y_old, z_old = zip(*[pose[:3, 3] for pose in poses])
+    x_new, y_new, z_new = zip(*[pose[:3, 3] for pose in poses_new])
 
-    # 전체 화면 창 설정
-    plt.figure(figsize=(12, 12))
+    # 3D 플롯 생성
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
 
-    # 지도 플롯
-    plt.plot(x_map, y_map, color='gray', linestyle='-', marker='.', label='Map', alpha=0.5)
-    plt.title("Total Matching")
-    plt.xlabel('X')
-    plt.ylabel('Y')
+    # 원래 포즈 시퀀스를 점과 선으로 표시
+    ax.plot(x_old, y_old, z_old, 'r.-', label='Original Pose')  # 빨간색 점과 선
+    # 변환된 포즈 시퀀스를 점과 선으로 표시
+    ax.plot(x_new, y_new, z_new, 'b.-', label='New Pose')  # 파란색 점과 선
 
-    # 매칭 플롯
-    for match in matchings:
-        if not match:
-            continue
-        first_match = match[0]
-        x_current, y_current = x_map[int(first_match[0])], y_map[int(first_match[0])]
-        x_matching, y_matching = x_map[int(first_match[1])], y_map[int(first_match[1])]
+    # 축 레이블 설정
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
 
-        if first_match[4] == "fp":
-            plt.plot([x_current, x_matching], [y_current, y_matching], 'r-', label='False Positive', linewidth=0.5)
-        elif first_match[4] == "tp":
-            plt.plot([x_current, x_matching], [y_current, y_matching], 'b-', label='True Positive', linewidth=0.5)
-        elif first_match[4] == "fn":
-            plt.plot(x_current, y_current, 'coral', marker='.', label='False Negative')
-
-    # 범례 설정 (중복 제거)
-    handles, labels = plt.gca().get_legend_handles_labels()
-    by_label = dict(zip(labels, handles))
-    plt.legend(by_label.values(), by_label.keys())
-
-    # 이미지 저장 (저장 경로와 파일명을 지정해야 합니다)
-    # plt.savefig(case + "/" + str(current_pose_idx) + "_" + str(matching_pose_idx) + '.png')
-
-    # 플롯 표시 또는 닫기
-    if vis:
-        plt.show()
-    else:
-        plt.close()
-
-
-
-def plot_two_poses(map, current_pose_idx, matching_pose_idx, range_image1, range_image2, case="fp_case", vis=True):
-    # 전체 지도 생성 -> x, y 좌표 추출
-    x_map, y_map = zip(*[pose[:2, 3] for pose in map])
-
-    # 현재 포즈 생성 -> x, y 좌표 추출
-    x_current, y_current = x_map[current_pose_idx], y_map[current_pose_idx]
-
-    # 매칭된 포즈 생성 -> x, y 좌표 추출
-    x_matching, y_matching = x_map[matching_pose_idx], y_map[matching_pose_idx]
-
-    # 전체 화면 창 설정
-    fig = plt.figure(figsize=(12, 12))
-    gs = gridspec.GridSpec(4, 1, figure=fig)
-
-    # 1. 전체 지도와 포즈 플롯
-    ax_map = fig.add_subplot(gs[0:2, :])  # 첫 번째 열 전체를 사용
-    
-    ax_map.plot(x_map[current_pose_idx:], y_map[current_pose_idx:], color='gray', linestyle='-', marker='.', label='Map', alpha=0.5)
-    ax_map.plot(x_map[:current_pose_idx], y_map[:current_pose_idx], 'y.-', label='Map')  # 빨간색 점과 선
-    # 2. Range Image 1
-    ax_range1 = fig.add_subplot(gs[2, :])  # 두 번째 열의 첫 번째 행
-    ax_range1.imshow(range_image1, cmap='gray')
-    ax_range1.set_title('current_pose')
-    ax_map.set_xlabel('X')
-    ax_map.set_ylabel('Y')
-    ax_map.legend()
-
-    if case == "fp_case":
-        ax_map.plot(x_current, y_current, 'bo', label='Current Pose')  # 파란색 점
-        ax_map.plot(x_matching, y_matching, 'ro', label='Matched Pose') # 빨간색 점
-        ax_map.set_title(case + " : " + str(current_pose_idx) + " - " + str(matching_pose_idx))
-        # 3. Range Image 2
-        ax_range2 = fig.add_subplot(gs[3, :])  # 두 번째 열의 두 번째 행
-        ax_range2.imshow(range_image2, cmap='gray')
-        ax_range2.set_title('matched_pose')
-    elif case == "tp_case":
-        ax_map.plot(x_current, y_current, 'bo', label='Current Pose')  # 파란색 점
-        ax_map.plot(x_matching, y_matching, 'go', label='Matched Pose') # 초록색 점
-        ax_map.set_title(case + " : " + str(current_pose_idx) + " - " + str(matching_pose_idx))
-        # 3. Range Image 2
-        ax_range2 = fig.add_subplot(gs[3, :])  # 두 번째 열의 두 번째 행
-        ax_range2.imshow(range_image2, cmap='gray')
-        ax_range2.set_title('matched_pose')
-    elif case == "fn_case":
-        ax_map.plot(x_current, y_current, color='coral', marker='.', label='Current Pose')  # 주황색 점
-        ax_map.set_title(case + " : " + str(current_pose_idx))
-    
-    # 레이아웃 조정
-    plt.tight_layout()
-    # 이미지 저장
-    plt.savefig(case + "/" + str(current_pose_idx) + "_" + str(matching_pose_idx) + '.png')
-
+    # 범례 표시
+    plt.legend()
     # 플롯 표시
-    if vis:
-        plt.show()
-    else:
-        plt.close(fig)
+    plt.show()
 
 def calculate_distance_matrix_fast(descriptors):
     # Calculate pairwise distances using pdist, then convert to a square form matrix
@@ -157,6 +79,13 @@ def calculate_pose_distances(poses):
             distances[i, j] = calculate_pose_distance(poses[i], poses[j])
             distances[j, i] = distances[i, j]
     return distances
+
+def range_image_projection(range_images, num_scans):
+    projected_range_images = []
+    for i in range(len(range_images) - num_scans + 1):
+        projected_range_image = np.concatenate(range_images[i:i + num_scans], axis=0)
+        projected_range_images.append(projected_range_image)
+    return projected_range_images
 
 def find_matching_poses(poses, descriptors, descriptor_threshold, pose_threshold, exclusion_range=300):
     n = len(poses)
@@ -186,10 +115,10 @@ def find_matching_poses(poses, descriptors, descriptor_threshold, pose_threshold
                 #  matching된 j     gt에 있는 j
                 if candidate[1] <= pose_threshold[0]:
                     # True Positive (TP): 매칭에 성공하고, 그 pose가 실제 매칭되어야 하는 경우
-                    matches.append((i, int(candidate[0]), candidate[1], candidate[2], "tp"))
+                    matches.append((i, candidate[0], candidate[1], candidate[2], "tp"))
                 elif candidate[1] > pose_threshold[1]:
                     # False Positive (FP): 매칭에 성공했으나, 그 pose가 실제로 매칭되어야 하는 것이 아닌 경우
-                    matches.append((i, int(candidate[0]), candidate[1], candidate[2], "fp"))
+                    matches.append((i, candidate[0], candidate[1], candidate[2], "fp"))
             if not matches: # 매칭된 모두가 3~20m 사이에 있어 tp, fp 모두 안된 경우. 이 경우는 거의 없다.
                 if revisit:
                     # False Negative (FN): 매칭에 실패했으나, 실제로 매칭해야 하는 것이 있는 경우
@@ -258,7 +187,7 @@ def calculate_metrics(matching_results, top_k=5):
     }
 
 def __main__(sequence):
-     # load scan paths and poses
+    # load scan paths and poses
     args = parser.parse_args()
     matrics_total = {}
     for seq in sequence:
@@ -273,27 +202,84 @@ def __main__(sequence):
         amodel.load_state_dict(checkpoint['state_dict'])
         amodel.eval()
 
-        if not os.path.exists("preprocessed_data/range_images_" + seq + ".npy"):
+        # load calibrations
+        calib_file = os.path.join(dataset_path, 'calib.txt')
+        T_cam_velo = load_calib(calib_file)
+        T_cam_velo = np.asarray(T_cam_velo).reshape((4, 4))
+        T_velo_cam = np.linalg.inv(T_cam_velo)
+
+        # load poses
+        poses_file = os.path.join(dataset_path, 'poses.txt')
+        poses = load_poses(poses_file)
+        pose0_inv = np.linalg.inv(poses[0])
+
+        # for KITTI dataset, we need to convert the provided poses
+        # from the camera coordinate system into the LiDAR coordinate system
+        poses_new = []
+
+        for pose in poses:
+            poses_new.append(T_velo_cam.dot(pose0_inv).dot(pose).dot(T_cam_velo))
+        # plot_two_poses(poses, poses_new)
+        poses = np.array(poses_new)
+
+        if not os.path.exists("preprocessed_data/descriptors_" + seq + ".npy"):
             # load scans
             print("Loading scans ...")
             scan_paths = sorted(glob.glob(os.path.join(dataset_path, 'velodyne', '*.bin')))
             scans = []
             for scan_path in tqdm(scan_paths):
                 scans.append(load_vertex(scan_path))
-            
+
             # calculate range image
             print("Calculating range images ...")
             range_images = []
             for scan in tqdm(scans):
                 proj_range, _, _, _ = range_projection(scan, fov_up=3, fov_down=-25.0, proj_H=64, proj_W=900, max_range=50)
                 range_images.append(proj_range)
-            range_images = np.array(range_images)
-            np.save("preprocessed_data/range_images_" + seq + ".npy", range_images)
-        else:
-            print("Loading range_images ...")
-            range_images = np.load("preprocessed_data/range_images_" + seq + ".npy")
+                if len(range_images) == 1000:
+                    break
 
-        if not os.path.exists("preprocessed_data/descriptors_" + seq + ".npy"):
+            proj_range_images = []
+            for i in trange(5, len(scans), 5):
+                projected_r = []
+                # for j in range(i, i+10):
+                #     reference_pose = poses[j-5]
+                #     reference_points = scans[j-5]
+                #     reference_points_world = reference_pose.dot(reference_points.T).T
+                #     reference_points_in_current = np.linalg.inv(poses[i]).dot(reference_points_world.T).T 
+                #     proj_range, _, _, _ = range_projection(reference_points_in_current, fov_up=3, fov_down=-25.0, proj_H=64, proj_W=900, max_range=50)
+                #     fig = plt.figure(figsize=(12, 15))
+                #     gs = gridspec.GridSpec(1, 1, figure=fig)
+                #     ax_range1 = fig.add_subplot(gs[0, :])  # 두 번째 열의 첫 번째 행
+                #     ax_range1.imshow(proj_range, cmap='gray')
+                #     ax_range1.set_title('current_pose')
+                #     plt.tight_layout()
+                #     plt.show()
+                #     projected_r.append(proj_range)
+                reference_points_in_current = np.empty((0, 4))
+                for j in range(i, i+20):
+                    reference_pose = poses[j-10]
+                    reference_points = scans[j-10]
+                    reference_points_world = reference_pose.dot(reference_points.T).T
+                    transformed_points = np.linalg.inv(poses[i]).dot(reference_points_world.T).T 
+                    reference_points_in_current = np.concatenate((reference_points_in_current, transformed_points), axis=0)
+                proj_range, _, _, _ = range_projection(reference_points_in_current, fov_up=3, fov_down=-25.0, proj_H=64, proj_W=900, max_range=50)
+                fig = plt.figure(figsize=(12, 20))
+
+                gs = gridspec.GridSpec(2, 1, figure=fig)
+                ax_range1 = fig.add_subplot(gs[0, :])  # 두 번째 열의 첫 번째 행
+                ax_range1.imshow(range_images[i], cmap='gray')
+                ax_range1.set_title('current_pose')
+                ax_range2 = fig.add_subplot(gs[1, :])  # 두 번째 열의 첫 번째 행
+                ax_range2.imshow(proj_range, cmap='gray')
+                ax_range2.set_title('current_pose')
+                plt.tight_layout()
+                plt.show()
+                proj_range_images.append(proj_range)
+
+            exit()
+            
+
             # make discriptors for all range images
             print("Calculating descriptors ...")
             descriptors = []
@@ -316,6 +302,7 @@ def __main__(sequence):
             descriptors = np.load("preprocessed_data/descriptors_" + seq + ".npy")
 
         if not os.path.exists("preprocessed_data/poses_" + seq + ".npy"):
+
             # load calibrations
             calib_file = os.path.join(dataset_path, 'calib.txt')
             T_cam_velo = load_calib(calib_file)
@@ -341,49 +328,24 @@ def __main__(sequence):
             poses = np.load("preprocessed_data/poses_" + seq + ".npy")
 
         # descriptor_threshold = 0.3  # descriptor 유사성 임계값
-        # descriptor_thresholds = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]  # descriptor 유사성 임계값
-        descriptor_thresholds = [0.3]  # descriptor 유사성 임계값
+        descriptor_thresholds = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]  # descriptor 유사성 임계값
         pose_threshold = [3.0, 20.0]  # 실제 pose 거리 임계값 3m, 20m
 
         for distance_threshold in descriptor_thresholds:
             matching_results = find_matching_poses(poses, descriptors, distance_threshold, pose_threshold)
             metrics = calculate_metrics(matching_results, top_k=50)
             matrics_total[seq + "_" + str(distance_threshold)] = metrics
-
-            # print("visualizing for FN") # 매칭에 실패했으나, 실제로 매칭해야 하는 것이 있는 경우
-            # for matches in matching_results:
-            #     first_match = matches[0]
-            #     if first_match[4] == "fn":
-            #         plot_two_poses(poses, first_match[0], first_match[1], range_images[first_match[0]], range_images[first_match[1]])
-
-            if args.case_vis:
-                print("visualizing for FP") # 매칭에 성공했지만, 실제로 매칭해야 하는 것이 없는 경우
-                if not os.path.exists("fp_case"):
-                    os.makedirs("fp_case")
-                if not os.path.exists("tp_case"):
-                    os.makedirs("tp_case")
-                if not os.path.exists("fn_case"):
-                    os.makedirs("fn_case")
-                for matches in matching_results:
-                    if not matches:
-                        continue
-                    first_match = matches[0]
-                    if first_match[4] == "fp":
-                        plot_two_poses(poses, first_match[0], first_match[1], range_images[first_match[0]], range_images[first_match[1]], "fp_case", False)
-                    if first_match[4] == "tp":
-                        plot_two_poses(poses, first_match[0], first_match[1], range_images[first_match[0]], range_images[first_match[1]], "tp_case", False)
-                    if first_match[4] == "fn":
-                        plot_two_poses(poses, first_match[0], first_match[1], range_images[first_match[0]], range_images[first_match[1]], "fn_case", False)
-        
-            if args.total_vis:
-                print("visualizing total metrics...")
-                plot_total_matching(poses, matching_results, True)
-
+            
     print("[Total Metrics]")
     for key, value in matrics_total.items():
         print(f"Sequence {key}:")
         for key2, value2 in value.items():
             print(f"\t{key2}: {value2:.3f}")
+
+    # print("Matching Metrics :")
+    # for key, value in metrics.items():
+    #     print(f"{key}: {value:.3f}")
+        
 
 if __name__ == '__main__':
     # use sequences 03–10 for training, sequence 02 for validation, and sequence 00 for evaluation.
