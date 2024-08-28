@@ -48,7 +48,8 @@ def gen_depth_data(scan_folder, dst_folder, normalize=False):
         current_vertex = np.fromfile(scan_paths[idx], dtype=np.float32)
         current_vertex = current_vertex.reshape((-1, 4))
 
-        proj_range, _, _, _ = range_projection(current_vertex)  # proj_ranges   from larger to smaller
+        # proj_range, _, _, _ = range_projection(current_vertex)  # proj_ranges   from larger to smaller / for kitti
+        proj_range, _, _, _ = range_projection(current_vertex = current_vertex, fov_up=3.75, fov_down=-7.75, proj_H=32, proj_W=900, max_range=30)  # for gm dataset
 
         # normalize the image
         if normalize:
@@ -66,8 +67,10 @@ def gen_depth_data(scan_folder, dst_folder, normalize=False):
 
 
 if __name__ == '__main__':
-    main_folder = '/media/vision/Data0/DataSets/kitti/dataset/sequences'
-    sequence = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']
+    # main_folder = '/media/vision/Data0/DataSets/kitti/dataset/sequences'
+    # sequence = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']
+    main_folder = '/media/vision/Data0/DataSets/gm_datasets'
+    sequence = ['07_01', '07_02', '08_01', '08_02']
 
     for seq in sequence:
         scan_folder = os.path.join(main_folder, seq)

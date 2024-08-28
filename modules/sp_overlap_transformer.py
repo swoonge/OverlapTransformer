@@ -13,170 +13,96 @@ if p not in sys.path:
 sys.path.append('../tools/')
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torchvision.models import resnet18
+
 from modules.netvlad import NetVLADLoupe
+import torch.nn.functional as F
 from tools.read_samples import read_one_need_from_seq
 import yaml
 import math
 
-# CircularPositionalEncoding 클래스 정의 (열 방향 인코딩에 사용)
-class CircularPositionalEncoding(nn.Module):
-    def __init__(self, d_model, width, max_len=5000):
-        super(CircularPositionalEncoding, self).__init__()
-        
-        self.width = width
-        self.d_model = d_model
-
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
-
-        # Modify the encoding to reflect circularity in width dimension
-        self.circular_pe = self._create_circular_encoding(pe)
-
-        self.register_buffer('pe', pe)
-    
-    def _create_circular_encoding(self, pe):
-        circular_pe = torch.zeros_like(pe)
-        
-        for i in range(pe.size(2)):
-            circular_pe[:, :, i] = torch.roll(pe[:, :, i], shifts=self.width // 2, dims=1)
-        
-        return circular_pe
-
-    def forward(self, x):
-        seq_len, batch_size, _ = x.size()
-        x = x + self.circular_pe[:seq_len, :].squeeze(1)
-        return x
-
-# Standard PositionalEncoding 클래스 정의 (행 방향 인코딩에 사용)
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
-        super(PositionalEncoding, self).__init__()
-        
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
-        
-        self.register_buffer('pe', pe)
-    
-    def forward(self, x):
-        x = x + self.pe[:x.size(0), :]
-        return x
-    
-class CustomResNet18(nn.Module):
-    def __init__(self, channels=1):
-        super(CustomResNet18, self).__init__()
-        self.resnet = resnet18(pretrained=False)
-        
-        # 첫 번째 Conv2d 레이어 조정
-        self.resnet.conv1 = nn.Conv2d(channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-        
-        # MaxPool 레이어를 그대로 사용하여 적절한 다운샘플링
-        self.resnet.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        
-        # layer4의 채널 수를 256으로 조정 (기존 512 -> 256)
-        self.resnet.layer4[0].conv1 = nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-        self.resnet.layer4[0].bn1 = nn.BatchNorm2d(256)
-        self.resnet.layer4[0].conv2 = nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-        self.resnet.layer4[0].bn2 = nn.BatchNorm2d(256)
-        self.resnet.layer4[0].downsample = nn.Sequential(
-            nn.Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1), bias=False),
-            nn.BatchNorm2d(256)
-        )
-
-        self.resnet.layer4[1].conv1 = nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-        self.resnet.layer4[1].bn1 = nn.BatchNorm2d(256)
-        self.resnet.layer4[1].conv2 = nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-        self.resnet.layer4[1].bn2 = nn.BatchNorm2d(256)
-        
-        # 마지막 fully connected layer 제거 (이미 Identity로 설정)
-        self.resnet.fc = nn.Identity()
-
-    def forward(self, x):
-        x = self.resnet.conv1(x)  # (batch_size, 64, 64, 900)
-        x = self.resnet.bn1(x)
-        x = self.resnet.relu(x)
-        x = self.resnet.maxpool(x)  # (batch_size, 64, 32, 450)
-
-        x = self.resnet.layer1(x)  # (batch_size, 64, 32, 450)
-        x = self.resnet.layer2(x)  # (batch_size, 128, 16, 225)
-        x = self.resnet.layer3(x)  # (batch_size, 256, 8, 113)
-        x = self.resnet.layer4(x)  # (batch_size, 256, 8, 113)
-
-        # 추가적인 업샘플링 레이어를 사용하여 원하는 출력 크기를 얻습니다.
-        x = nn.functional.interpolate(x, size=(16, 60), mode='bilinear', align_corners=False)  # (batch_size, 256, 16, 60)
-
-        return x
-
-    def forward(self, x):
-        return self.resnet(x)
-
-# OverlapTransformer의 Feature Extractor 정의
+"""
+    Feature extracter of OverlapTransformer.
+    Args:
+        height: the height of the range image (64 for KITTI sequences). 
+                 This is an interface for other types LIDAR.
+        width: the width of the range image (900, alone the lines of OverlapNet).
+                This is an interface for other types LIDAR.
+        channels: 1 for depth only in our work. 
+                This is an interface for multiple cues.
+        norm_layer: None in our work for better model.
+        use_transformer: Whether to use MHSA.
+"""
 class FeatureExtractor(nn.Module):
-    def __init__(self, height=64, width=900, channels=1, use_transformer=True):
+    def __init__(self, height=64, width=900, channels=5, norm_layer=None, use_transformer=True):
         super(FeatureExtractor, self).__init__()
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+
         self.use_transformer = use_transformer
 
-        # ResNet18을 사용하여 Feature Extractor 구성
-        self.resnet = CustomResNet18()
+        # CNN Layers
+        self.conv1 = nn.Conv2d(channels, 8, kernel_size=(3, 3), stride=(2, 2), bias=False, padding=1)  # [batch size, 8, 32, 450]
+        self.bn1 = norm_layer(8)
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=(3, 3), stride=(1, 1), bias=False, padding=1)  # [batch size, 16, 32, 450]
+        self.bn2 = norm_layer(16)
+        self.conv3 = nn.Conv2d(16, 32, kernel_size=(3, 3), stride=(1, 2), bias=False, padding=1)  # [batch size, 32, 32, 225]
+        self.bn3 = norm_layer(32)
+        self.conv4 = nn.Conv2d(32, 64, kernel_size=(3, 3), stride=(2, 2), bias=False, padding=1)  # [batch size, 64, 32, 113]
+        self.bn4 = norm_layer(64)
+        self.conv5 = nn.Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), bias=False, padding=1)  # [batch size, 128, 16, 57]
+        self.bn5 = norm_layer(128)
+        self.conv6 = nn.Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), bias=False, padding=1)  # [batch size, 128, 16, 57]
+        self.bn6 = norm_layer(128)
+        self.conv7 = nn.Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), bias=False, padding=1)  # [batch size, 128, 16, 57]
+        self.bn7 = norm_layer(128)
+        self.relu = nn.ReLU(inplace=True)
 
-        # Transformer layers
-        encoder_layer = nn.TransformerEncoderLayer(d_model=128, nhead=4, dim_feedforward=512, activation='relu', batch_first=True)
-        self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=1)
-        
-        # Positional Encodings
-        self.positional_encoder_row = PositionalEncoding(128)
-        self.positional_encoder_col = CircularPositionalEncoding(128, width=60)  # 열 방향 포지셔널 인코딩
-        
-        # 최종 디스크립터 레이어
-        self.final_conv = nn.Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
-        self.final_bn = nn.BatchNorm2d(256)
-        self.final_linear = nn.Linear(256 * 32 * 60, 32 * 60)
-    
+        # Transformer Encoder
+        encoder_layer = nn.TransformerEncoderLayer(d_model=128, nhead=4, dim_feedforward=512, activation='relu', batch_first=True, dropout=0.1)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+
+        # Linear layer to get final descriptor size
+        self.final_linear = nn.Linear(128, 128)
+
     def forward(self, x_l):
-        # ResNet18으로 피처 추출
-        print("x_l size: \n")
-        print(x_l.size())
-        features = self.resnet(x_l)  # Output shape: (batch_size, 512, h/32, w/32)
+        # CNN forward pass
+        out_l = self.relu(self.bn1(self.conv1(x_l)))
+        out_l = self.relu(self.bn2(self.conv2(out_l)))
+        out_l = self.relu(self.bn3(self.conv3(out_l)))
+        out_l = self.relu(self.bn4(self.conv4(out_l)))
+        out_l = self.relu(self.bn5(self.conv5(out_l)))
+        out_l = self.relu(self.bn6(self.conv6(out_l)))
+        out_l = self.relu(self.bn7(self.conv7(out_l)))
 
-        print("features size: \n")
-        print(features.size())
+        # Positional Encoding
+        N, C, H, W = out_l.size()
+        pe = self._circular_positional_encoding(C, H, W).to(out_l.device).unsqueeze(0).expand(N, -1, -1, -1)
+        out_l += pe
 
-        # 채널 수를 줄이고, Transformer에 입력될 크기로 조정
-        features_conv = self.final_conv(features)
-        features_conv = self.final_bn(features_conv)
-        features_conv = features_conv.permute(0, 2, 3, 1)  # Reshape to (batch_size, h, w, channels)
-        features_conv = features_conv.flatten(2)  # Flatten the spatial dimensions (batch_size, h, w * channels)
-
-        # Positional Encoding 추가 (행, 열 방향 모두)
-        features_pe = self.positional_encoder_row(features_conv)
-        features_pe = self.positional_encoder_col(features_pe)
-
-        # Transformer 적용
+        # Transformer Encoder
         if self.use_transformer:
-            features_transformed = self.transformer_encoder(features_pe)
-        
-        # ResNet18 피처와 Transformer 출력 결합
-        features_cat = torch.cat((features_conv, features_transformed), dim=-1)
+            out_l = out_l.permute(0, 2, 3, 1).contiguous().view(N * H, W, C)  # [N*H, W, C]
+            out_l = self.transformer_encoder(out_l)
+            out_l = out_l.view(N, H, W, C).permute(0, 3, 1, 2)  # [N, C, H, W]
 
-        # 최종 디스크립터 출력
-        features_cat = features_cat.view(features_cat.size(0), -1)  # Flatten for the final linear layer
-        descriptors = self.final_linear(features_cat)
-        descriptors = descriptors.view(features_cat.size(0), 32, 60)  # Reshape to (batch_size, 32, 60)
-        
-        return descriptors
+        # Concatenate Transformer output with CNN output
+        out_l = torch.cat((out_l, out_l), dim=1)  # Concatenation
 
+        # Final linear layer to reduce dimensions
+        out_l = self.final_linear(out_l.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)  # [N, C, H, W]
 
+        return out_l
+
+    def _circular_positional_encoding(self, channels, height, width):
+        """ Generates circular positional encoding for the width dimension. """
+        pe = torch.zeros(channels, height, width)
+        position = torch.arange(0, width, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, channels, 2).float() * (-math.log(10000.0) / channels))
+
+        pe[0::2, :, :] = torch.sin(position * div_term).permute(1, 0).unsqueeze(0).expand(height, -1, -1).permute(1, 0, 2)
+        pe[1::2, :, :] = torch.cos(position * div_term).permute(1, 0).unsqueeze(0).expand(height, -1, -1).permute(1, 0, 2)
+
+        return pe.to(position.device)
 
 
 if __name__ == '__main__':

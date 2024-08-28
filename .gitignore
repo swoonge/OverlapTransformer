@@ -9,6 +9,8 @@ __pycache__
 *.pth
 *.bin
 *.zip
+*.png
+*.npy
 logs
 
 checkpoints/*

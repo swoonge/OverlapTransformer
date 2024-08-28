@@ -30,11 +30,11 @@ test_weights = config["demo1_config"]["test_weights"]
 
 # set args for the script
 parser = argparse.ArgumentParser(description='Generate overlap and orientation combined mapping file')
-parser.add_argument('--dataset_path', type=str, default='/media/vision/Seagate/DataSets/kitti/dataset/sequences/', help='path to the scan data')
+parser.add_argument('--dataset_path', type=str, default='/media/vision/Data0/DataSets/gm_datasets/', help='path to the scan data')
 parser.add_argument('--total_vis', type=bool, default=True, help='total_vis')
 parser.add_argument('--case_vis', type=bool, default=False, help='case_vis')
 
-def plot_total_matching(poses, matchings, vis=True):
+def plot_total_matching(poses, matchings, vis=True, seq="08_02"):
     # 전체 지도 생성 -> x, y 좌표 추출
     x_map, y_map = zip(*[pose[:2, 3] for pose in poses])
 
@@ -61,6 +61,7 @@ def plot_total_matching(poses, matchings, vis=True):
             plt.plot([x_current, x_matching], [y_current, y_matching], 'b-', label='True Positive', linewidth=0.5)
         elif first_match[4] == "fn":
             plt.plot(x_current, y_current, 'coral', marker='.', label='False Negative')
+        continue
 
     # 범례 설정 (중복 제거)
     handles, labels = plt.gca().get_legend_handles_labels()
@@ -68,7 +69,7 @@ def plot_total_matching(poses, matchings, vis=True):
     plt.legend(by_label.values(), by_label.keys())
 
     # 이미지 저장 (저장 경로와 파일명을 지정해야 합니다)
-    plt.savefig("total_matching_case.png")
+    plt.savefig("total_matching_case_gm_"+ seq +".png")
 
     # 플롯 표시 또는 닫기
     if vis:
@@ -105,7 +106,7 @@ def plot_two_poses(map, current_pose_idx, matching_pose_idx, range_image1, range
     ax_map.set_ylabel('Y')
     ax_map.legend()
 
-    if case == "fp_case":
+    if case == "fp_case_gm":
         ax_map.plot(x_current, y_current, 'bo', label='Current Pose')  # 파란색 점
         ax_map.plot(x_matching, y_matching, 'ro', label='Matched Pose') # 빨간색 점
         ax_map.set_title(case + " : " + str(current_pose_idx) + " - " + str(matching_pose_idx))
@@ -113,7 +114,7 @@ def plot_two_poses(map, current_pose_idx, matching_pose_idx, range_image1, range
         ax_range2 = fig.add_subplot(gs[3, :])  # 두 번째 열의 두 번째 행
         ax_range2.imshow(range_image2, cmap='gray')
         ax_range2.set_title('matched_pose')
-    elif case == "tp_case":
+    elif case == "tp_case_gm":
         ax_map.plot(x_current, y_current, 'bo', label='Current Pose')  # 파란색 점
         ax_map.plot(x_matching, y_matching, 'go', label='Matched Pose') # 초록색 점
         ax_map.set_title(case + " : " + str(current_pose_idx) + " - " + str(matching_pose_idx))
@@ -121,7 +122,7 @@ def plot_two_poses(map, current_pose_idx, matching_pose_idx, range_image1, range
         ax_range2 = fig.add_subplot(gs[3, :])  # 두 번째 열의 두 번째 행
         ax_range2.imshow(range_image2, cmap='gray')
         ax_range2.set_title('matched_pose')
-    elif case == "fn_case":
+    elif case == "fn_case_gm":
         ax_map.plot(x_current, y_current, color='coral', marker='.', label='Current Pose')  # 주황색 점
         ax_map.set_title(case + " : " + str(current_pose_idx))
     
@@ -261,6 +262,10 @@ def __main__(sequence):
      # load scan paths and poses
     args = parser.parse_args()
     matrics_total = {}
+    range_images = []
+    descriptors = []
+    poses = []
+
     for seq in sequence:
         dataset_path = os.path.join(args.dataset_path, seq)
 
@@ -273,32 +278,34 @@ def __main__(sequence):
         amodel.load_state_dict(checkpoint['state_dict'])
         amodel.eval()
 
-        if not os.path.exists("preprocessed_data/range_images_" + seq + ".npy"):
+        if not os.path.exists("preprocessed_data_gm/range_images_" + seq + ".npy"):
             # load scans
             print("Loading scans ...")
-            scan_paths = sorted(glob.glob(os.path.join(dataset_path, 'velodyne', '*.bin')))
             scans = []
+            scan_paths = sorted(glob.glob(os.path.join(dataset_path, 'velodyne', '*.bin')))
             for scan_path in tqdm(scan_paths):
                 scans.append(load_vertex(scan_path))
             
             # calculate range image
             print("Calculating range images ...")
-            range_images = []
             for scan in tqdm(scans):
-                proj_range, _, _, _ = range_projection(scan, fov_up=3, fov_down=-25.0, proj_H=64, proj_W=900, max_range=50)
+                proj_range, _, _, _ = range_projection(scan, fov_up=3.75, fov_down=-7.75, proj_H=32, proj_W=900, max_range=50)
                 range_images.append(proj_range)
-            range_images = np.array(range_images)
-            np.save("preprocessed_data/range_images_" + seq + ".npy", range_images)
+            range_images_np = np.array(range_images)
+            np.save("preprocessed_data_gm/range_images_" + seq + ".npy", range_images_np)
         else:
             print("Loading range_images ...")
-            range_images = np.load("preprocessed_data/range_images_" + seq + ".npy")
+            saved_range_images = np.load("preprocessed_data_gm/range_images_" + seq + ".npy")
+            for img in saved_range_images:
+                range_images.append(img)
+            range_images_np = np.array(range_images)
+            
 
-        if not os.path.exists("preprocessed_data/descriptors_" + seq + ".npy"):
+        if not os.path.exists("preprocessed_data_gm/descriptors_" + seq + ".npy"):
             # make discriptors for all range images
             print("Calculating descriptors ...")
-            descriptors = []
             total_time = 0
-            for range_image in tqdm(range_images):
+            for range_image in tqdm(range_images_np):
                 time_start = time.time()
                 range_image_tensor = torch.from_numpy(range_image).unsqueeze(0)
                 range_image_tensor = range_image_tensor.unsqueeze(0).cuda()
@@ -306,47 +313,40 @@ def __main__(sequence):
                 time_end = time.time()
                 total_time += time_end - time_start
                 descriptors.append(np.squeeze(descriptor))
-            mean_time = total_time / len(range_images)
+            mean_time = total_time / len(range_images_np)
             print(f"모델 평균 시간: {mean_time:.6f} 초")
-            descriptors = np.array(descriptors)
+            descriptors_np = np.array(descriptors)
 
-            np.save("preprocessed_data/descriptors_" + seq + ".npy", descriptors)
+            np.save("preprocessed_data_gm/descriptors_" + seq + ".npy", descriptors)
         else:
             print("Loading descriptors ...")
-            descriptors = np.load("preprocessed_data/descriptors_" + seq + ".npy")
+            saved_descriptors = np.load("preprocessed_data_gm/descriptors_" + seq + ".npy")
+            for descriptor in saved_descriptors:
+                descriptors.append(descriptor)
+            descriptors_np = np.array(descriptors)
 
-        if not os.path.exists("preprocessed_data/poses_" + seq + ".npy"):
-            # load calibrations
-            calib_file = os.path.join(dataset_path, 'calib.txt')
-            T_cam_velo = load_calib(calib_file)
-            T_cam_velo = np.asarray(T_cam_velo).reshape((4, 4))
-            T_velo_cam = np.linalg.inv(T_cam_velo)
-
+        if not os.path.exists("preprocessed_data_gm/poses_" + seq + ".npy"):
             # load poses
             poses_file = os.path.join(dataset_path, 'poses.txt')
-            poses = load_poses(poses_file)
-            pose0_inv = np.linalg.inv(poses[0])
-
-            # for KITTI dataset, we need to convert the provided poses
-            # from the camera coordinate system into the LiDAR coordinate system
-            poses_new = []
-            for pose in poses:
-                poses_new.append(T_velo_cam.dot(pose0_inv).dot(pose).dot(T_cam_velo))
-            # plot_two_poses(poses, poses_new)
-            poses = np.array(poses_new)
-
-            np.save("preprocessed_data/poses_" + seq + ".npy", poses)
+            saved_poses = load_poses(poses_file)
+            for po in saved_poses:
+                poses.append(po)
+            poses_np = np.array(poses)
+            np.save("preprocessed_data_gm/poses_" + seq + ".npy", poses)
         else:
             print("Loading poses ...")
-            poses = np.load("preprocessed_data/poses_" + seq + ".npy")
-
+            saved_poses = np.load("preprocessed_data_gm/poses_" + seq + ".npy")
+            for po in saved_poses:
+                poses.append(po)
+            poses_np = np.array(poses)
+            
         # descriptor_threshold = 0.3  # descriptor 유사성 임계값
         # descriptor_thresholds = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]  # descriptor 유사성 임계값
-        descriptor_thresholds = [0.3]  # descriptor 유사성 임계값
-        pose_threshold = [3.0, 20.0]  # 실제 pose 거리 임계값 3m, 20m
+        descriptor_thresholds = [0.04]  # descriptor 유사성 임계값
+        pose_threshold = [1.5, 20.0]  # 실제 pose 거리 임계값 3m, 20m
 
         for distance_threshold in descriptor_thresholds:
-            matching_results = find_matching_poses(poses, descriptors, distance_threshold, pose_threshold)
+            matching_results = find_matching_poses(poses_np, descriptors_np, distance_threshold, pose_threshold)
             metrics = calculate_metrics(matching_results, top_k=50)
             matrics_total[seq + "_" + str(distance_threshold)] = metrics
 
@@ -358,26 +358,26 @@ def __main__(sequence):
 
             if args.case_vis:
                 print("visualizing for FP") # 매칭에 성공했지만, 실제로 매칭해야 하는 것이 없는 경우
-                if not os.path.exists("fp_case"):
-                    os.makedirs("fp_case")
-                if not os.path.exists("tp_case"):
-                    os.makedirs("tp_case")
-                if not os.path.exists("fn_case"):
-                    os.makedirs("fn_case")
+                if not os.path.exists("fp_case_gm"):
+                    os.makedirs("fp_case_gm")
+                if not os.path.exists("tp_case_gm"):
+                    os.makedirs("tp_case_gm")
+                if not os.path.exists("fn_case_gm"):
+                    os.makedirs("fn_case_gm")
                 for matches in matching_results:
                     if not matches:
                         continue
                     first_match = matches[0]
                     if first_match[4] == "fp":
-                        plot_two_poses(poses, first_match[0], first_match[1], range_images[first_match[0]], range_images[first_match[1]], "fp_case", False)
+                        plot_two_poses(poses_np, first_match[0], first_match[1], range_images_np[first_match[0]], range_images_np[first_match[1]], "fp_case_gm", True)
                     if first_match[4] == "tp":
-                        plot_two_poses(poses, first_match[0], first_match[1], range_images[first_match[0]], range_images[first_match[1]], "tp_case", False)
+                        plot_two_poses(poses_np, first_match[0], first_match[1], range_images_np[first_match[0]], range_images_np[first_match[1]], "tp_case_gm", False)
                     if first_match[4] == "fn":
-                        plot_two_poses(poses, first_match[0], first_match[1], range_images[first_match[0]], range_images[first_match[1]], "fn_case", False)
+                        plot_two_poses(poses_np, first_match[0], first_match[1], range_images_np[first_match[0]], range_images_np[first_match[1]], "fn_case_gm", False)
         
             if args.total_vis:
                 print("visualizing total metrics...")
-                plot_total_matching(poses, matching_results, True)
+                plot_total_matching(poses_np, matching_results, True, seq)
 
     print("[Total Metrics]")
     for key, value in matrics_total.items():
@@ -388,6 +388,7 @@ def __main__(sequence):
 if __name__ == '__main__':
     # use sequences 03–10 for training, sequence 02 for validation, and sequence 00 for evaluation.
     # sequence = ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
-    sequence = ["08_02"]
+    # sequence = ["08_01", "08_02"]
+    sequence = ["07_01", "07_02"]
     
     __main__(sequence)
