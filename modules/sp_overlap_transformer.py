@@ -2,7 +2,7 @@
 # Developed by Junyi Ma, Xieyuanli Chen, and Jun Zhang
 # This file is covered by the LICENSE file in the root of the project OverlapTransformer:
 # https://github.com/haomo-ai/OverlapTransformer/
-# Brief: OverlapTransformer modules for KITTI sequences
+# Brief: OverlapTransformer modules for Haomo dataset
 
 
 import os
@@ -10,119 +10,142 @@ import sys
 p = os.path.dirname(os.path.dirname((os.path.abspath(__file__))))
 if p not in sys.path:
     sys.path.append(p)
-sys.path.append('../tools/')
+sys.path.append('../tools/')    
 import torch
 import torch.nn as nn
+import numpy as np
 
 from modules.netvlad import NetVLADLoupe
 import torch.nn.functional as F
-from tools.read_samples import read_one_need_from_seq
-import yaml
-import math
 
-"""
-    Feature extracter of OverlapTransformer.
-    Args:
-        height: the height of the range image (64 for KITTI sequences). 
-                 This is an interface for other types LIDAR.
-        width: the width of the range image (900, alone the lines of OverlapNet).
-                This is an interface for other types LIDAR.
-        channels: 1 for depth only in our work. 
-                This is an interface for multiple cues.
-        norm_layer: None in our work for better model.
-        use_transformer: Whether to use MHSA.
-"""
-class FeatureExtractor(nn.Module):
-    def __init__(self, height=64, width=900, channels=5, norm_layer=None, use_transformer=True):
-        super(FeatureExtractor, self).__init__()
+
+
+class featureExtracter(nn.Module):
+    def __init__(self, height=64, width=900, channels=5, norm_layer=None, use_transformer = True):
+        super(featureExtracter, self).__init__()
         if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
+            norm_layer = nn.BatchNorm2d   # number of channels
 
         self.use_transformer = use_transformer
 
-        # CNN Layers
-        self.conv1 = nn.Conv2d(channels, 8, kernel_size=(3, 3), stride=(2, 2), bias=False, padding=1)  # [batch size, 8, 32, 450]
-        self.bn1 = norm_layer(8)
-        self.conv2 = nn.Conv2d(8, 16, kernel_size=(3, 3), stride=(1, 1), bias=False, padding=1)  # [batch size, 16, 32, 450]
-        self.bn2 = norm_layer(16)
-        self.conv3 = nn.Conv2d(16, 32, kernel_size=(3, 3), stride=(1, 2), bias=False, padding=1)  # [batch size, 32, 32, 225]
-        self.bn3 = norm_layer(32)
-        self.conv4 = nn.Conv2d(32, 64, kernel_size=(3, 3), stride=(2, 2), bias=False, padding=1)  # [batch size, 64, 32, 113]
+        self.conv1 = nn.Conv2d(channels, 16, kernel_size=(2,1), stride=(2,1), bias=False)
+        self.bn1 = norm_layer(16)
+        self.conv1_add = nn.Conv2d(16, 16, kernel_size=(5,5), stride=(1,1), bias=False)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=(3,3), stride=(1,1), bias=False)
+        self.bn2 = norm_layer(32)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=(3,3), stride=(1,1), bias=False)
+        self.bn3 = norm_layer(64)
+        self.conv4 = nn.Conv2d(64, 64, kernel_size=(3,3), stride=(1,1), bias=False)
         self.bn4 = norm_layer(64)
-        self.conv5 = nn.Conv2d(64, 128, kernel_size=(3, 3), stride=(1, 1), bias=False, padding=1)  # [batch size, 128, 16, 57]
+        self.conv5 = nn.Conv2d(64, 128, kernel_size=(3,3), stride=(1,1), bias=False)
         self.bn5 = norm_layer(128)
-        self.conv6 = nn.Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), bias=False, padding=1)  # [batch size, 128, 16, 57]
+        self.conv6 = nn.Conv2d(128, 128, kernel_size=(3,3), stride=(1,1), bias=False)
         self.bn6 = norm_layer(128)
-        self.conv7 = nn.Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), bias=False, padding=1)  # [batch size, 128, 16, 57]
+        self.conv7 = nn.Conv2d(128, 128, kernel_size=(1,1), stride=(2,1), bias=False)
         self.bn7 = norm_layer(128)
+
         self.relu = nn.ReLU(inplace=True)
 
-        # Transformer Encoder
-        encoder_layer = nn.TransformerEncoderLayer(d_model=128, nhead=4, dim_feedforward=512, activation='relu', batch_first=True, dropout=0.1)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
 
-        # Linear layer to get final descriptor size
-        self.final_linear = nn.Linear(128, 128)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=256, nhead=4, dim_feedforward=1024, activation='relu', batch_first=False,dropout=0.)
+        self.transformer_encoder = torch.nn.TransformerEncoder(encoder_layer, num_layers=1)  # 3 6
+        self.convLast1 = nn.Conv2d(128, 256, kernel_size=(1,1), stride=(1,1), bias=False)
+        self.bnLast1 = norm_layer(256)
+        self.convLast2 = nn.Conv2d(512, 1024, kernel_size=(1,1), stride=(1,1), bias=False)
+        self.bnLast2 = norm_layer(1024)
+
+        self.linear = nn.Linear(128*900, 256)
+
+        self.sigmoid = nn.Sigmoid()
+        self.softmax = nn.Softmax()
+
+        self.net_vlad = NetVLADLoupe(feature_size=1024, max_samples=900, cluster_size=64,  # before 11.12 --- 64
+                                     output_dim=256, gating=True, add_batch_norm=False,   # output_dim=512
+                                     is_training=True)
+
+        self.linear1 = nn.Linear(1 * 256, 256)
+        self.bnl1 = norm_layer(256)
+        self.linear2 = nn.Linear(1 * 256, 256)
+        self.bnl2 = norm_layer(256)
+        self.linear3 = nn.Linear(1 * 256, 256)
+        self.bnl3 = norm_layer(256)
 
     def forward(self, x_l):
-        # CNN forward pass
-        out_l = self.relu(self.bn1(self.conv1(x_l)))
-        out_l = self.relu(self.bn2(self.conv2(out_l)))
-        out_l = self.relu(self.bn3(self.conv3(out_l)))
-        out_l = self.relu(self.bn4(self.conv4(out_l)))
-        out_l = self.relu(self.bn5(self.conv5(out_l)))
-        out_l = self.relu(self.bn6(self.conv6(out_l)))
-        out_l = self.relu(self.bn7(self.conv7(out_l)))
 
-        # Positional Encoding
-        N, C, H, W = out_l.size()
-        pe = self._circular_positional_encoding(C, H, W).to(out_l.device).unsqueeze(0).expand(N, -1, -1, -1)
-        out_l += pe
 
-        # Transformer Encoder
+        out_l = self.relu(self.conv1(x_l))
+        out_l = self.relu(self.conv1_add(out_l))
+        out_l = self.relu(self.conv2(out_l))
+        out_l = self.relu(self.conv3(out_l))
+        out_l = self.relu(self.conv4(out_l))
+        out_l = self.relu(self.conv5(out_l))
+        out_l = self.relu(self.conv6(out_l))
+        out_l = self.relu(self.conv7(out_l))
+
+
+        out_l_1 = out_l.permute(0,1,3,2)  # out_r (bs, 128,360, 1)
+        out_l_1 = self.relu(self.convLast1(out_l_1))
+
         if self.use_transformer:
-            out_l = out_l.permute(0, 2, 3, 1).contiguous().view(N * H, W, C)  # [N*H, W, C]
+            out_l = out_l_1.squeeze(3)
+
+            out_l = out_l.permute(2, 0, 1)
             out_l = self.transformer_encoder(out_l)
-            out_l = out_l.view(N, H, W, C).permute(0, 3, 1, 2)  # [N, C, H, W]
 
-        # Concatenate Transformer output with CNN output
-        out_l = torch.cat((out_l, out_l), dim=1)  # Concatenation
-
-        # Final linear layer to reduce dimensions
-        out_l = self.final_linear(out_l.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)  # [N, C, H, W]
+            out_l = out_l.permute(1, 2, 0)
+            out_l = out_l.unsqueeze(3)
+            out_l = torch.cat((out_l_1, out_l), dim=1)
+            out_l = self.relu(self.convLast2(out_l))
+            out_l = F.normalize(out_l, dim=1)
+            out_l = self.net_vlad(out_l)
+            out_l = F.normalize(out_l, dim=1)
 
         return out_l
 
-    def _circular_positional_encoding(self, channels, height, width):
-        """ Generates circular positional encoding for the width dimension. """
-        pe = torch.zeros(channels, height, width)
-        position = torch.arange(0, width, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, channels, 2).float() * (-math.log(10000.0) / channels))
-
-        pe[0::2, :, :] = torch.sin(position * div_term).permute(1, 0).unsqueeze(0).expand(height, -1, -1).permute(1, 0, 2)
-        pe[1::2, :, :] = torch.cos(position * div_term).permute(1, 0).unsqueeze(0).expand(height, -1, -1).permute(1, 0, 2)
-
-        return pe.to(position.device)
-
-
-if __name__ == '__main__':
-    # load config ================================================================
-    config_filename = '../config/config.yml'
-    config = yaml.safe_load(open(config_filename))
-    seqs_root = config["data_root"]["data_root_folder"]
-    # ============================================================================
-
-    combined_tensor = read_one_need_from_seq(seqs_root, "000000","00")
-    combined_tensor = torch.cat((combined_tensor,combined_tensor), dim=0)
-
-    feature_extracter=FeatureExtractor(use_transformer=True, channels=1)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    feature_extracter.to(device)
-    feature_extracter.eval()
-
-    print("model architecture: \n")
-    print(feature_extracter)
-
-    gloabal_descriptor = feature_extracter(combined_tensor)
-    print("size of gloabal descriptor: \n")
-    print(gloabal_descriptor.size())
+#
+# if __name__ == '__main__':
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#
+#     # fig_traj2 = np.load("/home/mjy/datasets/haomo_data/1208_1/02/img_all/depth/002465.npy")
+#     # fig_traj1 = np.load("/home/mjy/datasets/haomo_data/1208_1/01/img_all/depth/031291.npy")
+#
+#     # combined_tensor = read_one_need_from_seq("031291")   # torch.Size([1, 1, 32, 900])
+#     # combined_tensor = read_one_need_from_seq_test("002465")   # torch.Size([1, 1, 32, 900])
+#     # print(combined_tensor.size())
+#
+#     # toy example
+#     combined_tensor = torch.zeros((1, 1, 32, 900)).to(device)
+#     for i in range(5):
+#         combined_tensor[:,:,:,180*i:180*(i+1)] = torch.ones((1, 1, 32, 180)) * 10 * i
+#
+#
+#     current_batch_double = torch.cat((combined_tensor, combined_tensor), dim=-1)
+#     current_batch_inv = current_batch_double[:, :, :, 450:1350]
+#     # current_batch_inv = current_batch_double[:, :, :, 225:1125]
+#
+#     combined_tensor = torch.cat((combined_tensor, current_batch_inv), dim=0)
+#
+#     feature_extracter=featureExtracter(use_transformer=True,channels=1)
+#     feature_extracter.to(device)
+#
+#     resume_filename = "/home/mjy/datasets/haomo_data/tools/amodel_transformer_depth_only13.pth.tar"
+#     print("Resuming From ", resume_filename)
+#     checkpoint = torch.load(resume_filename)
+#     starting_epoch = checkpoint['epoch']
+#     feature_extracter.load_state_dict(checkpoint['state_dict'])  # 加载状态字典
+#
+#
+#     feature_extracter.eval()
+#     output_l, output_l_1= feature_extracter(combined_tensor)
+#     # print(output_l)
+#     print(output_l.shape)   # torch.Size([2, 256])
+#     print(output_l_1.shape)   # torch.Size([2, 256])
+#
+#     show_input_results(combined_tensor[0,:,:,:])
+#     show_input_results(combined_tensor[1,:,:,:])
+#
+#     show_inter_results(output_l_1[0,:,:,:])
+#     show_inter_results(output_l_1[1,:,:,:])
+#
+#     show_final_results(output_l[0,:])
+#     show_final_results(output_l[1,:])

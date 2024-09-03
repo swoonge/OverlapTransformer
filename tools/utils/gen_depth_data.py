@@ -49,7 +49,7 @@ def gen_depth_data(scan_folder, dst_folder, normalize=False):
         current_vertex = current_vertex.reshape((-1, 4))
 
         # proj_range, _, _, _ = range_projection(current_vertex)  # proj_ranges   from larger to smaller / for kitti
-        proj_range, _, _, _ = range_projection(current_vertex = current_vertex, fov_up=3.75, fov_down=-7.75, proj_H=32, proj_W=900, max_range=30)  # for gm dataset
+        proj_range, _, _, _ = range_projection(current_vertex = current_vertex, fov_up=3.0, fov_down=-25.0, proj_H=64, proj_W=900, max_range=80)  # for gm dataset
 
         # normalize the image
         if normalize:

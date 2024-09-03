@@ -25,9 +25,9 @@ import yaml
 
 
 
-def validate_seq_faiss(amodel, seq_num):
+def validate_seq_faiss(amodel, seq_num, config_filename = '../config/config.yml'):
     # load config ================================================================
-    config_filename = '../config/config.yml'
+    # config_filename = '../config/config.yml'
     config = yaml.safe_load(open(config_filename))
     seqs_root = config["data_root"]["data_root_folder"]
     valid_scan_folder = config["data_root"]["valid_scan_folder"]

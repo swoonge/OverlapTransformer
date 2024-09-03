@@ -82,8 +82,9 @@ class trainHandler():
 
         writer1 = SummaryWriter(comment="LR_0.xxxx")
 
-        for i in range(starting_epoch+1, epochs):
+        for i in range(starting_epoch+1, epochs): # epochs
 
+            # 001655 001634 0.1495379 00 00 형태의 데이터
             (self.train_imgf1, self.train_imgf2, self.train_dir1, self.train_dir2, self.train_overlap) = \
                 overlap_orientation_npz_file2string_string_nparray(self.traindata_npzfiles, shuffle=True)
 
@@ -119,6 +120,7 @@ class trainHandler():
 
                 """read one query range image from KITTI sequences"""
                 current_batch = read_one_need_from_seq(self.data_root_folder, f1_index, dir1_index)
+                # [1,1,H,W] 형태의 데이터 = single image
 
                 """
                     read several reference range images from KITTI sequences 
@@ -128,6 +130,8 @@ class trainHandler():
                     (self.data_root_folder,f1_index, dir1_index,
                      self.train_imgf1, self.train_imgf2, self.train_dir1, self.train_dir2, self.train_overlap,
                      self.overlap_thresh)
+                
+                # print("pos_num: ", pos_num, "neg_num: ", neg_num)
 
                 """
                     the balance of positive samples and negative samples.

@@ -3,9 +3,9 @@ data_root:
   data_root_folder: "/media/vision/Data0/DataSets/gm_datasets/"
   # data_root_folder: "/home/mjy/datasets/overlapnet_datasets/OverlapNet/kitti/dataset_full/"
   # KITTI sequence 02 velodyne
-  valid_scan_folder: "/media/vision/Data0/DataSets/gm_datasets/08_01/velodyne"
+  valid_scan_folder: "/media/vision/Data0/DataSets/kitti/dataset/sequences/02/velodyne"
   # KITTI sequence 02 computed overlaps
-  gt_valid_folder: "/media/vision/Data0/DataSets/gm_datasets/computed_overlap/"
+  gt_valid_folder: "/media/vision/Data0/DataSets/kitti/dataset/sequences/computed_overlap/"
 
 demo1_config:
   # calibration file from KITTI 00
@@ -13,11 +13,11 @@ demo1_config:
   # pose file from KITTI 00
   poses_file: "/media/vision/Data0/DataSets/kitti/dataset/poses/00.txt"
   # pretrained model
-  test_weights: "../checkpoints/pretrained/pretrained_overlap_transformer.pth.tar"
+  test_weights: "../gm_weights/lr1e-07_pretrained_overlap_transformer7.pth.tar"
 
 training_config:
   # KITTI sequences for training
-  training_seqs: ["07_01", "07_02"]
+  training_seqs: ["07_01", "07_02", "08_02"]
 
 test_config:
   # KITTI sequence 00 for evaluation

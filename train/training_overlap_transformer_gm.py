@@ -16,7 +16,7 @@ import torch
 import numpy as np
 from tensorboardX import SummaryWriter
 from tools.read_all_sets import overlap_orientation_npz_file2string_string_nparray
-from modules.sp_overlap_transformer import FeatureExtractor
+from modules.overlap_transformer import feature_extracter
 from tools.read_samples import read_one_batch_pos_neg
 from tools.read_samples import read_one_need_from_seq
 np.set_printoptions(threshold=sys.maxsize)
@@ -42,7 +42,7 @@ class trainHandler():
         self.train_set = train_set
         self.training_seqs = training_seqs
 
-        self.amodel = FeatureExtractor(channels=self.channels, use_transformer=self.use_transformer)
+        self.amodel = feature_extracter(channels=self.channels, use_transformer=self.use_transformer)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.amodel.to(self.device)
         self.parameters  = self.amodel.parameters()
@@ -128,6 +128,8 @@ class trainHandler():
                     (self.data_root_folder,f1_index, dir1_index,
                      self.train_imgf1, self.train_imgf2, self.train_dir1, self.train_dir2, self.train_overlap,
                      self.overlap_thresh)
+                
+                print("pos_num: ", pos_num, "neg_num: ", neg_num)
 
                 """
                     the balance of positive samples and negative samples.
@@ -221,7 +223,7 @@ if __name__ == '__main__':
     # ============================================================================
 
     # along the lines of OverlapNet
-    traindata_npzfiles = [os.path.join(data_root_folder, seq, 'overlaps/train_set.npz') for seq in training_seqs]
+    traindata_npzfiles = [os.path.join(data_root_folder, seq, 'ground_truth/train_set.npz') for seq in training_seqs]
 
     """
         trainHandler to handle with training process.
@@ -236,7 +238,7 @@ if __name__ == '__main__':
             train_set: traindata_npzfiles (alone the lines of OverlapNet).
             training_seqs: sequences number for training (alone the lines of OverlapNet).
     """
-    train_handler = trainHandler(height=32, width=900, channels=1, norm_layer=None, use_transformer=True, lr=0.000005,
+    train_handler = trainHandler(height=64, width=900, channels=1, norm_layer=None, use_transformer=True, lr=0.000005,
                                  data_root_folder=data_root_folder, train_set=traindata_npzfiles, training_seqs = training_seqs)
 
     train_handler.train()

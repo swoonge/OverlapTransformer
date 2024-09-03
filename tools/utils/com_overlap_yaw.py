@@ -23,7 +23,7 @@ def com_overlap_yaw(scan_paths, poses, frame_idx, leg_output_width=360):
                              where each row contains [current_frame_idx, reference_frame_idx, overlap, yaw]
   """
   # init ground truth overlap and yaw
-  print('Start to compute ground truth overlap and yaw ...')
+  # print('Start to compute ground truth overlap and yaw ...')
   overlaps = []
   yaw_idxs = []
   yaw_resolution = leg_output_width
@@ -68,6 +68,6 @@ def com_overlap_yaw(scan_paths, poses, frame_idx, leg_output_width=360):
   ground_truth_mapping[:, 3] = yaw_idxs
   # print(ground_truth_mapping)
 
-  print('Finish generating ground_truth_mapping!')
+  # print('Finish generating ground_truth_mapping!')
 
   return ground_truth_mapping

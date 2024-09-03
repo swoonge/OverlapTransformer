@@ -255,12 +255,15 @@ def __main__(sequence):
             poses = np.load("preprocessed_data/poses_" + seq + ".npy")
 
         # descriptor_threshold = 0.3  # descriptor 유사성 임계값
-        descriptor_thresholds = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]  # descriptor 유사성 임계값
+        # descriptor_thresholds = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]  # descriptor 유사성 임계값
+        descriptor_thresholds = np.arange(0.1, 0.4, 0.025)
         pose_threshold = [3.0, 20.0]  # 실제 pose 거리 임계값 3m, 20m
 
+        f1_scores = []
         for distance_threshold in descriptor_thresholds:
             matching_results = find_matching_poses(poses, descriptors, distance_threshold, pose_threshold)
             metrics = calculate_metrics(matching_results, top_k=50)
+            f1_scores.append(metrics["F1-Score"])
             matrics_total[seq + "_" + str(distance_threshold)] = metrics
             
     print("[Total Metrics]")
@@ -268,6 +271,10 @@ def __main__(sequence):
         print(f"Sequence {key}:")
         for key2, value2 in value.items():
             print(f"\t{key2}: {value2:.3f}")
+    
+    print("[F1-Scores]")
+    print(f"F1-Scores: {f1_scores}")
+    print(f"F1-max: {max(f1_scores)}")
 
     # print("Matching Metrics :")
     # for key, value in metrics.items():

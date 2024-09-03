@@ -23,7 +23,7 @@ from scipy.spatial.distance import pdist, squareform
 from modules.overlap_transformer import featureExtracter
 
 # load config ================================================================
-config_filename = '../config/config.yml'
+config_filename = '../config/config_gm.yml'
 config = yaml.safe_load(open(config_filename))
 test_weights = config["demo1_config"]["test_weights"]
 # ============================================================================
@@ -389,6 +389,6 @@ if __name__ == '__main__':
     # use sequences 03–10 for training, sequence 02 for validation, and sequence 00 for evaluation.
     # sequence = ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
     # sequence = ["08_01", "08_02"]
-    sequence = ["07_01", "07_02"]
+    sequence = ["08_01"]
     
     __main__(sequence)

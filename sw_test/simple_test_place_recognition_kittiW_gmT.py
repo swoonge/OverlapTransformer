@@ -22,7 +22,7 @@ from scipy.spatial.distance import pdist, squareform
 from modules.overlap_transformer import featureExtracter
 
 # load config ================================================================
-config_filename = '../config/config.yml'
+config_filename = '../config/config_gm.yml'
 config = yaml.safe_load(open(config_filename))
 test_weights = config["demo1_config"]["test_weights"]
 # ============================================================================
@@ -251,13 +251,17 @@ def __main__(sequence):
             poses = np.load("preprocessed_data_gm/poses_" + seq + ".npy")
 
         # descriptor_threshold = 0.3  # descriptor 유사성 임계값
-        descriptor_thresholds = [0.3]  # descriptor 유사성 임계값
+        # descriptor_thresholds = [0.3]  # descriptor 유사성 임계값
+        # descriptor_thresholds = np.arange(0.01, 0.1, 0.025)
+        descriptor_thresholds = np.arange(0.005, 0.01, 0.001)
         # descriptor_thresholds = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]  # descriptor 유사성 임계값
         pose_threshold = [3.0, 20.0]  # 실제 pose 거리 임계값 3m, 20m
 
+        f1_scores = []
         for distance_threshold in descriptor_thresholds:
             matching_results = find_matching_poses(poses, descriptors, distance_threshold, pose_threshold)
             metrics = calculate_metrics(matching_results, top_k=50)
+            f1_scores.append(metrics["F1-Score"])
             matrics_total[seq + "_" + str(distance_threshold)] = metrics
             
     print("[Total Metrics]")
@@ -265,6 +269,10 @@ def __main__(sequence):
         print(f"Sequence {key}:")
         for key2, value2 in value.items():
             print(f"\t{key2}: {value2:.3f}")
+
+    print("[F1-Scores]")
+    print(f"F1-Scores: {f1_scores}")
+    print(f"F1-max: {max(f1_scores)}")
 
     # print("Matching Metrics :")
     # for key, value in metrics.items():
@@ -274,6 +282,6 @@ def __main__(sequence):
 if __name__ == '__main__':
     # use sequences 03–10 for training, sequence 02 for validation, and sequence 00 for evaluation.
     # sequence = ["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
-    sequence = ["08_02"]
+    sequence = ["08_01"]
     
     __main__(sequence)
